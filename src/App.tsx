@@ -355,7 +355,7 @@ export default function App() {
       <FloatingActions />
 
       {/* AI Virtual Concierge */}
-      <AIChatbot onAddBooking={handleAddBooking} />
+      <AIChatbot onAddBooking={handleAddBooking} onAddMessage={handleAddMessage} />
 
       {/* Hidden Secure Admin Panel Modal (WordPress-like Custom CMS) */}
       {config && (

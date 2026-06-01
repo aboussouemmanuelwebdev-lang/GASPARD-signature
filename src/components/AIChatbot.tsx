@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from "react";
 import { MessageSquare, X, Send, MapPin, Sparkles, Phone, Calendar, Users, Clock, Check, ChevronDown } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
-import { Booking } from "../types";
+import { Booking, ContactMessage } from "../types";
 
 interface AIChatbotProps {
   onAddBooking: (booking: Omit<Booking, 'id' | 'createdAt' | 'status'>) => void;
+  onAddMessage: (message: Omit<ContactMessage, 'id' | 'createdAt' | 'status'>) => void;
 }
 
 interface Message {
@@ -14,7 +15,7 @@ interface Message {
   bookingData?: any;
 }
 
-export default function AIChatbot({ onAddBooking }: AIChatbotProps) {
+export default function AIChatbot({ onAddBooking, onAddMessage }: AIChatbotProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -46,6 +47,152 @@ export default function AIChatbot({ onAddBooking }: AIChatbotProps) {
       setShowNotification(false);
     }
   }, [isOpen]);
+
+  // Analyzes the chat transaction and pushes leads / unanswered questions summaries to Admin Panel (Inbox)
+  const processConversationAnalysis = (
+    userText: string,
+    botReply: string,
+    isBookingCall: boolean,
+    bookingDetails?: any
+  ) => {
+    if (!onAddMessage) return;
+
+    const userLower = userText.toLowerCase();
+    const botLower = botReply.toLowerCase();
+
+    // 1. Check for UNANSWERED / EXCEPTION / REQUEST FOR HUMAN HELP
+    const isRequestingHuman = userLower.includes("humain") || 
+                              userLower.includes("responsable") || 
+                              userLower.includes("gérant") || 
+                              userLower.includes("directeur") || 
+                              userLower.includes("gérance") ||
+                              userLower.includes("vrai personne") ||
+                              userLower.includes("personne physique");
+
+    const fallbackTriggered = botReply.includes("Désolé, j'ai rencontré un petit contretemps") || 
+                               botLower.includes("excuse") || 
+                               botLower.includes("ne peux pas répondre") || 
+                               botLower.includes("pas d'information") ||
+                               botLower.includes("pas en mesure") ||
+                               botLower.includes("je ne sais pas") ||
+                               botLower.includes("hors de mes compétences") ||
+                               botLower.includes("contacter notre directeur") ||
+                               botReply.includes("Je m'excuse, je n'ai pas pu formuler ma réponse");
+
+    if (isRequestingHuman || fallbackTriggered) {
+      const formatUnresolvedSummary = `
+[CONCIERGE AI - ALERTE ASSISTANCE MANUELLE REQUISE]
+
+Statut : Question non-résolue ou appel à l'aide d'un responsable.
+Type : Demande d'intervention humaine directe.
+
+-- DERNIER MESSAGE DE L'UTILISATEUR --
+"${userText}"
+
+-- DERNIÈRE RÉPONSE DE L'ASSISTANT --
+"${botReply}"
+
+-- DIAGNOSTIC CONCIERGERIE --
+L'utilisateur a posé une question pour laquelle l'IA n'a pas pu fournir une réponse complète / satisfaisante, ou a expressément formulé le besoin d'échanger avec le gérant du restaurant.
+
+-- RECOMMANDATION POUR LE RESPONSABLE --
+Veuillez contacter ce client par téléphone ou consulter ses messages récents pour de l'aide immédiate.
+      `;
+
+      onAddMessage({
+        name: "Assistance Requise (Client en attente)",
+        email: "concierge-alert@gaspardsignature.ci",
+        phone: "Intervention Manuelle",
+        subject: "⚠️ Alerte Message non-résolu (Concierge AI)",
+        message: formatUnresolvedSummary.trim()
+      });
+      return; // Stop here to prevent generating a secondary lead email in the same turn
+    }
+
+    // 2. Check for lead/business opportunity (can bring customers)
+    const isBookingRelated = isBookingCall || 
+                              userLower.includes("réserv") || 
+                              userLower.includes("booking") || 
+                              userLower.includes("table") || 
+                              userLower.includes("places") || 
+                              userLower.includes("rdv") || 
+                              userLower.includes("rendez-vous") || 
+                              userLower.includes("venir");
+
+    const isMenuRelated = userLower.includes("menu") || 
+                          userLower.includes("carte") || 
+                          userLower.includes("manger") || 
+                          userLower.includes("spécialité") || 
+                          userLower.includes("prix") || 
+                          userLower.includes("coûte") || 
+                          userLower.includes("tarif") || 
+                          userLower.includes("grillade") || 
+                          userLower.includes("pizza") || 
+                          userLower.includes("vin");
+
+    const isLocationRelated = userLower.includes("adresse") || 
+                              userLower.includes("localisation") || 
+                              userLower.includes("situé") || 
+                              userLower.includes("où se trouve") || 
+                              userLower.includes("comment s'y rendre") || 
+                              userLower.includes("pharmacie");
+
+    const isEventRelated = userLower.includes("privat") || 
+                           userLower.includes("événement") || 
+                           userLower.includes("anniversaire") || 
+                           userLower.includes("mariage") || 
+                           userLower.includes("groupe") || 
+                           userLower.includes("traiteur");
+
+    if (isBookingRelated || isMenuRelated || isLocationRelated || isEventRelated) {
+      let focusCategory = "Intérêt Général / Visite";
+      if (isBookingCall) focusCategory = "RÉSERVATION EFFECTUÉE (À VALIDER MANUELLEMENT)";
+      else if (isBookingRelated) focusCategory = "Intention de Réservation / Rendez-vous";
+      else if (isEventRelated) focusCategory = "Demande de Privatisation / Groupe / Traiteur";
+      else if (isMenuRelated) focusCategory = "Consultation du Menu & Spécialités";
+      else if (isLocationRelated) focusCategory = "Recherche d'Itinéraire / Adresse";
+
+      let keyDetailsStr = "Intérêt pour la carte ou la visite.";
+      if (isBookingCall && bookingDetails) {
+        keyDetailsStr = `Réservation de table enregistrée :
+• Client : ${bookingDetails.firstName} ${bookingDetails.lastName}
+• Téléphone : ${bookingDetails.phone}
+• Date & Heure : ${bookingDetails.date} à ${bookingDetails.time}
+• Nombre de personnes : ${bookingDetails.guestsCount}
+• Note spéciale : ${bookingDetails.message || 'Aucune'}`;
+      } else {
+        keyDetailsStr = `Le client s'intéresse à notre offre :
+• Sujet présumé : ${focusCategory}
+• Message client : "${userText}"
+• Action conseillée : Préparez l'accueil ou offrez une relance si le client renseigne ses détails de contact dans le chat ou le formulaire.`;
+      }
+
+      const formatLeadSummary = `
+[CONCIERGE AI - HISTORIQUE ET OPPORTUNITÉ CLIENT DÉTECTÉE]
+
+Type d'Intérêt : ${focusCategory}
+Statut : Opportunité commerciale à forte valeur ajoutée.
+
+-- HISTORIQUE CONTEXTUEL EXTRAYABLE --
+- Question : "${userText}"
+- Réponse donnée : "${botReply.substring(0, 250)}..."
+
+-- RÉSUMÉ POUR LA GÉRANCE --
+${keyDetailsStr}
+
+-- ACTION RECOMMANDÉE --
+Veuillez valider manuellement l'enregistrement (si réservation de table ou commande) ou suivre le prospect dans les plus brefs délais pour maximiser la conversion.
+      `;
+
+      onAddMessage({
+        name: isBookingCall && bookingDetails ? `${bookingDetails.firstName} ${bookingDetails.lastName}` : "Client Potentiel (AI Prospect)",
+        email: isBookingCall && bookingDetails?.email ? bookingDetails.email : "visiteur-ia@gaspardsignature.ci",
+        phone: isBookingCall && bookingDetails?.phone ? bookingDetails.phone : "Chat AI Direct",
+        subject: isBookingCall ? "🗓️ Dépôt de Réservation par IA" : "💼 Opportunité Client (Concierge AI)",
+        message: formatLeadSummary.trim()
+      });
+    }
+  };
 
   const handleSendMessage = async (userText: string, apiText?: string) => {
     if (!userText.trim()) return;
@@ -101,11 +248,13 @@ export default function AIChatbot({ onAddBooking }: AIChatbotProps) {
 
         // Add receipt message locally
         const receiptId = 'book-' + Math.random().toString(36).substr(2, 9);
+        const autoReplyTxt = data.reply || "Merveilleux ! J'ai enfilé ma tenue de maître d'hôtel et j'ai le plaisir de confirmer votre table de prestige de la part de notre Chef. Voici votre reçu de réservation :";
+        
         setMessages(prev => [
           ...prev,
           {
             role: "assistant",
-            content: data.reply || "Merveilleux ! J'ai enfilé ma tenue de maître d'hôtel et j'ai le plaisir de confirmer votre table de prestige de la part de notre Chef. Voici votre reçu de réservation :",
+            content: autoReplyTxt,
             isBookingReceipt: true,
             bookingData: {
               ...formattedBooking,
@@ -113,27 +262,39 @@ export default function AIChatbot({ onAddBooking }: AIChatbotProps) {
             }
           }
         ]);
+
+        // Process analysis for lead generation & sync to admin panel (Inbox)
+        processConversationAnalysis(userText, autoReplyTxt, true, formattedBooking);
+
       } else {
         // Standard text reply
+        const autoReplyTxt = data.reply || "Je m'excuse, je n'ai pas pu formuler ma réponse. Comment puis-je vous aider ?";
         setMessages(prev => [
           ...prev,
           {
             role: "assistant",
-            content: data.reply || "Je m'excuse, je n'ai pas pu formuler ma réponse. Comment puis-je vous aider ?"
+            content: autoReplyTxt
           }
         ]);
+
+        // Process analysis for lead generation & sync to admin panel (Inbox)
+        processConversationAnalysis(userText, autoReplyTxt, false);
       }
 
     } catch (error) {
       console.error("Chatbot API Error:", error);
       setIsTyping(false);
+      const errReply = "Désolé, j'ai rencontré un petit contretemps de connexion avec notre service de conciergerie. Vous pouvez joindre notre Directeur directement par téléphone au **07 00 00 60 82** ou réessayer dans un instant.";
       setMessages(prev => [
         ...prev,
         {
           role: "assistant",
-          content: "Désolé, j'ai rencontré un petit contretemps de connexion avec notre service de conciergerie. Vous pouvez joindre notre Directeur directement par téléphone au **07 00 00 60 82** ou réessayer dans un instant."
+          content: errReply
         }
       ]);
+
+      // Process analysis for fallback failure tracking
+      processConversationAnalysis(userText, errReply, false);
     }
   };
 
