@@ -185,8 +185,9 @@ export default function App() {
   };
 
   const handleAddNewOrder = (orderData: Omit<Order, 'id' | 'createdAt' | 'status'>) => {
+    const orderId = generateUniqueId('ORD');
     const newOrder: Order = {
-      id: generateUniqueId('ORD'),
+      id: orderId,
       ...orderData,
       status: 'pending',
       createdAt: new Date().toISOString()
@@ -194,12 +195,45 @@ export default function App() {
     const updated = [newOrder, ...orders];
     setOrders(updated);
     saveStoredOrders(updated);
+
+    // Also send an automated notification in the messages (inbox)!
+    const itemsList = orderData.items.map(i => `• ${i.quantity}x ${i.name} (${i.optionsSummary || 'Standard'}) - ${i.price} F CFA`).join('\n');
+    const orderSummaryMessage = `
+🛒 NOUVELLE COMMANDE REÇUE (À LIVRER OU RETRAIT)
+
+• Référence Commande : ${orderId}
+• Client : ${orderData.clientName}
+• Téléphone : ${orderData.clientPhone}
+• Email : ${orderData.clientEmail || 'Non renseigné'}
+• Type de Service : ${orderData.serviceType === 'delivery' ? 'Livraison à domicile' : 'Retrait sur place'}
+${orderData.serviceType === 'delivery' ? `• Quartier de Livraison : ${orderData.deliveryDistrict || 'N/A'}\n• Adresse précise : ${orderData.deliveryAddress || 'N/A'}` : `• Heure de retrait estimée : ${orderData.pickupTime || 'N/A'}`}
+• Paiement : ${orderData.paymentMethod === 'cash' ? 'Payé en Espèces' : 'Payé par Mobile Money'}
+
+-- PLATS COMMANDÉS --
+${itemsList}
+
+• Sous-total : ${orderData.subtotal} F CFA
+• Frais de livraison : ${orderData.deliveryFee} F CFA
+• TOTAL GÉNÉRAL : ${orderData.totalPrice} F CFA
+
+-- ACTION REQUISE --
+Veuillez vous rendre dans l'onglet "Commandes" du panneau d'administration pour valider et préparer ce repas manuellement.
+    `;
+
+    handleAddMessage({
+      name: orderData.clientName,
+      email: orderData.clientEmail || "commandes-site@gaspardsignature.ci",
+      phone: orderData.clientPhone,
+      subject: `🛒 Commande: ${orderData.clientName} (${orderId})`,
+      message: orderSummaryMessage.trim()
+    });
   };
 
   // Add a booking from the customer form
   const handleAddBooking = (formData: Omit<Booking, 'id' | 'createdAt' | 'status'>) => {
+    const bookingId = generateUniqueId('book');
     const newBooking: Booking = {
-      id: generateUniqueId('book'),
+      id: bookingId,
       ...formData,
       status: 'pending', // default pending review by admin
       createdAt: new Date().toISOString()
@@ -207,6 +241,31 @@ export default function App() {
     const updated = [newBooking, ...bookings];
     setBookings(updated);
     saveStoredBookings(updated);
+
+    // Also send an automated notification in the messages (inbox)!
+    const bookingSummaryMessage = `
+🗓️ NOUVELLE RÉSERVATION DE TABLE (À VALIDER MANUELLEMENT)
+
+• Référence Réservation : ${bookingId}
+• Visiteur : ${formData.firstName} ${formData.lastName}
+• Téléphone : ${formData.phone}
+• Email : ${formData.email || 'Non renseigné'}
+• Date souhaitée : ${formData.date}
+• Heure de repas : ${formData.time}
+• Convives : ${formData.guestsCount} personne(s)
+• Demande Spéciale : "${formData.message || 'Aucune'}"
+
+-- ACTION REQUISE --
+Veuillez vous rendre dans l'onglet "Réservations" du panneau d'administration pour valider ou refuser cette table manuellement en contactant le client.
+    `;
+
+    handleAddMessage({
+      name: `${formData.firstName} ${formData.lastName}`,
+      email: formData.email || "reservations-site@gaspardsignature.ci",
+      phone: formData.phone,
+      subject: `🗓️ Demande Table: ${formData.firstName} ${formData.lastName}`,
+      message: bookingSummaryMessage.trim()
+    });
   };
 
   // Add a message from the contact form
