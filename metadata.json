@@ -1,0 +1,6 @@
+{
+  "name": "Gaspard Signature",
+  "description": "Plateforme web premium pour Gaspard Signature (Cocody, Abidjan). Comprend un menu interactif avec personnalisation des cuissons/épices, commandes en ligne (livraison/retrait), système de réservation de table en temps réel, Concierge virtuel intelligent (Gemini AI) pour l'accompagnement client, d'un fil TikTok, d'une galerie photo HD et d'un panneau d'administration (CMS sur mesure) pour gérer en temps réel les réservations, commandes, bannières, suggestions d'ardoise et catalogue.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
