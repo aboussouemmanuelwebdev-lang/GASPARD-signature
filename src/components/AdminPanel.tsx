@@ -3,7 +3,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   ShieldCheck, X, BookOpen, Calendar, HelpCircle, Settings, 
   Trash2, Plus, Edit3, HeartHandshake, Eye, CheckCircle2, ShieldAlert,
-  Save, RefreshCw, PowerOff, ShoppingBag, Sparkles, Phone, Printer, Camera
+  Save, RefreshCw, PowerOff, ShoppingBag, Sparkles, Phone, Printer, Camera,
+  ChevronLeft, ChevronRight, CalendarDays
 } from 'lucide-react';
 import { MenuItem, Booking, ContactMessage, Promotion, RestaurantConfig, DailySpecial, Order, PromotionalBanner, GalleryItem } from '../types';
 import { 
@@ -108,6 +109,11 @@ export default function AdminPanel({
   const [editingItem, setEditingItem] = useState<MenuItem | null>(null);
   const [editingSpecial, setEditingSpecial] = useState<DailySpecial | null>(null);
   const [editingBooking, setEditingBooking] = useState<Booking | null>(null);
+
+  // Calendar states for table occupancy visualization
+  const [calendarYear, setCalendarYear] = useState<number>(2026);
+  const [calendarMonth, setCalendarMonth] = useState<number>(5); // June (0-indexed is 5)
+  const [selectedCalendarDate, setSelectedCalendarDate] = useState<string | null>(null);
   const [editingBanner, setEditingBanner] = useState<PromotionalBanner | null>(null);
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
 
@@ -1411,6 +1417,210 @@ export default function AdminPanel({
                     <p className="text-white/50 text-xs sm:text-sm">Cliquez pour administrer le statut ou entrer en relation.</p>
                   </div>
 
+                  {/* Visual Calendar Occupancy Chart Component */}
+                  {(() => {
+                    const daysInMonth = new Date(calendarYear, calendarMonth + 1, 0).getDate();
+                    const firstDayIndex = new Date(calendarYear, calendarMonth, 1).getDay();
+                    const startOffset = firstDayIndex === 0 ? 6 : firstDayIndex - 1; // Mon-biased index
+                    const MONTH_NAMES = [
+                      "Janvier", "Février", "Mars", "Avril", "Mai", "Juin",
+                      "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"
+                    ];
+                    return (
+                      <div className="bg-[#141313] p-5 rounded-2xl border border-gold-400/10 space-y-4">
+                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-white/5 pb-4">
+                          <div>
+                            <h4 className="font-serif text-sm font-bold text-gold-400 flex items-center space-x-2">
+                              <CalendarDays className="h-4 w-4" />
+                              <span className="uppercase tracking-widest text-xs">Tableau d'Occupation des Tables</span>
+                            </h4>
+                            <p className="text-[11px] text-white/50 mt-1">
+                              Visualisation du taux de réservation journalier basé sur une capacité de 30 couverts/jour. Cliquez sur un jour pour filtrer.
+                            </p>
+                          </div>
+
+                          {/* Nav controls */}
+                          <div className="flex items-center space-x-2 self-end sm:self-auto">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (calendarMonth === 0) {
+                                  setCalendarMonth(11);
+                                  setCalendarYear(calendarYear - 1);
+                                } else {
+                                  setCalendarMonth(calendarMonth - 1);
+                                }
+                              }}
+                              className="bg-[#201e1e] hover:bg-gold-500/15 p-2 rounded-lg text-white border border-white/5 hover:border-gold-400/20 transition-all cursor-pointer"
+                            >
+                              <ChevronLeft size={16} />
+                            </button>
+                            <span className="text-xs font-mono font-bold text-white px-3 py-1.5 bg-[#201e1e] rounded-lg border border-white/5 min-w-[125px] text-center uppercase tracking-wider">
+                              {MONTH_NAMES[calendarMonth]} {calendarYear}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (calendarMonth === 11) {
+                                  setCalendarMonth(0);
+                                  setCalendarYear(calendarYear + 1);
+                                } else {
+                                  setCalendarMonth(calendarMonth + 1);
+                                }
+                              }}
+                              className="bg-[#201e1e] hover:bg-gold-500/15 p-2 rounded-lg text-white border border-white/5 hover:border-gold-400/20 transition-all cursor-pointer"
+                            >
+                              <ChevronRight size={16} />
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Weekday headers */}
+                        <div className="grid grid-cols-7 gap-1 text-center font-mono text-[9px] uppercase tracking-wider text-gold-400/60 font-bold border-b border-white/5 pb-2">
+                          <div>Lun</div>
+                          <div>Mar</div>
+                          <div>Mer</div>
+                          <div>Jeu</div>
+                          <div>Ven</div>
+                          <div>Sam</div>
+                          <div>Dim</div>
+                        </div>
+
+                        {/* Calendar grid */}
+                        <div className="grid grid-cols-7 gap-1.5">
+                          {/* Empty cells for padding */}
+                          {Array.from({ length: startOffset }).map((_, index) => (
+                            <div key={`empty-${index}`} className="aspect-square bg-transparent rounded-lg border border-transparent" />
+                          ))}
+
+                          {/* Current month days */}
+                          {Array.from({ length: daysInMonth }).map((_, i) => {
+                            const dayNum = i + 1;
+                            const dayDateString = `${calendarYear}-${String(calendarMonth + 1).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
+                            
+                            // Bookings for this specific day
+                            const dayBookings = bookings.filter(b => b.date === dayDateString && b.status !== 'cancelled');
+                            const totalGuests = dayBookings.reduce((sum, b) => sum + b.guestsCount, 0);
+                            const capacityLimit = 30;
+                            const rate = Math.min(Math.round((totalGuests / capacityLimit) * 100), 200);
+
+                            // Select styled color based on rate
+                            let cellBg = "bg-[#100f0f] border-white/5 hover:border-white/15";
+                            let textColor = "text-white/80";
+                            let rateColor = "text-white/40";
+                            let progressColor = "bg-white/10";
+
+                            if (rate > 0) {
+                              if (rate <= 30) {
+                                cellBg = "bg-[#1c3a17]/15 border-[#4da13e]/25 hover:border-[#4da13e]/40";
+                                textColor = "text-[#8deb7e]";
+                                rateColor = "text-[#4da13e] font-bold";
+                                progressColor = "bg-[#4da13e]";
+                              } else if (rate <= 70) {
+                                cellBg = "bg-[#4d3211]/15 border-[#dca642]/25 hover:border-[#dca642]/40";
+                                textColor = "text-[#fcd386]";
+                                rateColor = "text-[#dca642] font-bold";
+                                progressColor = "bg-[#dca642]";
+                              } else if (rate <= 100) {
+                                cellBg = "bg-[#4d1f11]/15 border-[#dc6542]/25 hover:border-[#dc6542]/40";
+                                textColor = "text-[#fc9986]";
+                                rateColor = "text-[#dc6542] font-bold";
+                                progressColor = "bg-[#dc6542]";
+                              } else {
+                                // > 100% Fully Overbooked
+                                cellBg = "bg-[#4d1123]/25 border-[#dc4265]/50 hover:border-[#dc4265]/80 animate-pulse";
+                                textColor = "text-[#fca8be]";
+                                rateColor = "text-[#dc4265] font-extrabold";
+                                progressColor = "bg-[#dc4265]";
+                              }
+                            }
+
+                            const isSelected = selectedCalendarDate === dayDateString;
+                            if (isSelected) {
+                              cellBg += " ring-2 ring-gold-400 border-gold-400 bg-[#352515]/20";
+                            }
+
+                            return (
+                              <button
+                                key={`day-${dayNum}`}
+                                type="button"
+                                onClick={() => {
+                                  if (isSelected) {
+                                    setSelectedCalendarDate(null); // toggle off
+                                  } else {
+                                    setSelectedCalendarDate(dayDateString);
+                                  }
+                                }}
+                                className={`aspect-square p-1.5 rounded-lg border flex flex-col justify-between text-left transition-all ${cellBg} relative group cursor-pointer`}
+                              >
+                                <span className={`text-[11px] font-mono font-bold leading-none ${isSelected ? 'text-gold-400' : 'text-white/90'}`}>
+                                  {dayNum}
+                                </span>
+
+                                {totalGuests > 0 ? (
+                                  <div className="w-full space-y-1">
+                                    <div className="flex justify-between items-center text-[8px] font-mono leading-none">
+                                      <span className={rateColor}>{rate}%</span>
+                                      <span className="text-white/55 hidden sm:inline">{totalGuests}p</span>
+                                    </div>
+                                    <div className="w-full h-1 bg-white/5 rounded-full overflow-hidden">
+                                      <div className={`h-full ${progressColor}`} style={{ width: `${Math.min(rate, 100)}%` }} />
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <span className="text-[8px] font-mono text-white/10 hidden group-hover:inline leading-none">vide</span>
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
+
+                        {/* Legend */}
+                        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-[10px] font-mono text-white/50 border-t border-white/5 pt-3">
+                          <div className="flex items-center space-x-1.5">
+                            <div className="w-2.5 h-2.5 rounded bg-[#100f0f] border border-white/5" />
+                            <span>0% (Disponible)</span>
+                          </div>
+                          <div className="flex items-center space-x-1.5">
+                            <div className="w-2.5 h-2.5 rounded bg-[#1c3a17]/15 border border-[#4da13e]/30" />
+                            <span>1 - 30% (Calme)</span>
+                          </div>
+                          <div className="flex items-center space-x-1.5">
+                            <div className="w-2.5 h-2.5 rounded bg-[#4d3211]/15 border border-[#dca642]/30" />
+                            <span>31 - 70% (Modéré)</span>
+                          </div>
+                          <div className="flex items-center space-x-1.5">
+                            <div className="w-2.5 h-2.5 rounded bg-[#4d1f11]/15 border border-[#dc6542]/30" />
+                            <span>71 - 100% (Chargé)</span>
+                          </div>
+                          <div className="flex items-center space-x-1.5 animate-pulse">
+                            <div className="w-2.5 h-2.5 rounded bg-[#4d1123]/25 border border-[#dc4265]/60" />
+                            <span>&gt;100% (Complet 🚨)</span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Filter Info bar if selected date */}
+                  {selectedCalendarDate && (
+                    <div className="bg-gold-500/10 border border-gold-400/30 rounded-xl p-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+                      <div>
+                        <span className="text-xs uppercase font-mono text-gold-400 font-bold block">Filtre Actif</span>
+                        <p className="text-xs text-white">
+                          Affichage uniquement des réservations programmées pour le : <strong className="text-gold-300">{selectedCalendarDate}</strong>
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedCalendarDate(null)}
+                        className="bg-gold-500 hover:bg-gold-400 text-black font-semibold text-[10px] uppercase tracking-wider py-1.5 px-3 rounded cursor-pointer self-end sm:self-auto"
+                      >
+                        Voir Toutes les Dates
+                      </button>
+                    </div>
+                  )}
+
                   {/* Edit Booking Modal */}
                   <AnimatePresence>
                     {editingBooking && (
@@ -1551,7 +1761,20 @@ export default function AdminPanel({
                     </div>
                   ) : (
                     <div className="space-y-4">
-                      {bookings.map((booking) => (
+                      {(() => {
+                        const filtered = selectedCalendarDate 
+                          ? bookings.filter(b => b.date === selectedCalendarDate)
+                          : bookings;
+                        
+                        if (filtered.length === 0) {
+                          return (
+                            <div className="text-center py-10 bg-[#181818] rounded-xl border border-white/5 text-white/40 text-sm font-mono">
+                              Aucune réservation pour le {selectedCalendarDate}
+                            </div>
+                          );
+                        }
+
+                        return filtered.map((booking) => (
                         <div
                           key={booking.id}
                           id={`admin-booking-item-${booking.id}`}
@@ -1632,7 +1855,8 @@ export default function AdminPanel({
                             </div>
                           </div>
                         </div>
-                      ))}
+                        ));
+                      })()}
                     </div>
                   )}
                 </div>
